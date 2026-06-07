@@ -15,7 +15,11 @@ import {
 import { BrandMark } from "@/components/atoms/BrandMark";
 import { OrgSwitcher } from "@/components/organisms/OrgSwitcher";
 import { UserMenu } from "@/components/organisms/UserMenu";
+import { DashboardSidebarProvider } from "@/components/templates/dashboard-sidebar-context";
 import { isOnboardingComplete } from "@/lib/onboarding";
+import { cn } from "@/lib/utils";
+
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "openclaw.sidebar.collapsed";
 
 export function DashboardShell({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -30,6 +34,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     setSidebarState({ open: false, path: pathname });
   }
   const sidebarOpen = sidebarState.open;
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setDesktopCollapsed(
+      window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true",
+    );
+  }, []);
 
   const meQuery = useGetMeApiV1UsersMeGet<
     getMeApiV1UsersMeGetResponse,
@@ -82,6 +94,14 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     [pathname],
   );
 
+  const toggleDesktopCollapsed = useCallback(() => {
+    setDesktopCollapsed((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(next));
+      return next;
+    });
+  }, []);
+
   // Dismiss sidebar on Escape
   useEffect(() => {
     if (!sidebarOpen) return;
@@ -93,10 +113,21 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   }, [sidebarOpen]);
 
   return (
-    <div className="min-h-screen bg-app text-strong" data-sidebar={sidebarOpen ? "open" : "closed"}>
+    <div
+      className="min-h-screen bg-app text-strong"
+      data-sidebar={sidebarOpen ? "open" : "closed"}
+      data-sidebar-desktop={desktopCollapsed ? "collapsed" : "expanded"}
+    >
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white shadow-sm">
         <div className="flex items-center py-3">
-          <div className="flex items-center px-4 md:px-6 md:w-[260px]">
+          <div
+            className={cn(
+              "flex items-center px-4 md:px-6",
+              desktopCollapsed
+                ? "md:w-16 md:justify-center md:px-2"
+                : "md:w-[260px]",
+            )}
+          >
             {isSignedIn ? (
               <button
                 type="button"
@@ -107,7 +138,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
             ) : null}
-            <BrandMark />
+            <BrandMark compact={desktopCollapsed} />
           </div>
           <SignedIn>
             <div className="hidden md:flex flex-1 items-center">
@@ -140,8 +171,17 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         />
       ) : null}
 
-      <div className="grid min-h-[calc(100vh-64px)] grid-cols-1 md:grid-cols-[260px_1fr] bg-slate-50">
-        {children}
+      <div
+        className={cn(
+          "grid min-h-[calc(100vh-64px)] grid-cols-1 bg-slate-50",
+          desktopCollapsed ? "md:grid-cols-[64px_1fr]" : "md:grid-cols-[260px_1fr]",
+        )}
+      >
+        <DashboardSidebarProvider
+          value={{ desktopCollapsed, toggleDesktopCollapsed }}
+        >
+          {children}
+        </DashboardSidebarProvider>
       </div>
     </div>
   );

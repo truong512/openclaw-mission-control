@@ -145,6 +145,36 @@ local_app_require_uv() {
   command -v uv >/dev/null 2>&1 || local_app_die "uv is required. Install from https://docs.astral.sh/uv/"
 }
 
+local_app_sync_backend() {
+  local_app_info "Syncing backend dependencies..."
+  (
+    cd "$REPO_ROOT/backend"
+    export PATH="$HOME/.local/bin:$PATH"
+    uv sync --extra dev
+  )
+}
+
+local_app_wait_backend_health() {
+  local i url="http://127.0.0.1:${BACKEND_PORT}/healthz"
+  local log_file="${LOG_DIR}/backend.log"
+
+  local_app_info "Waiting for backend health at $url ..."
+  for ((i = 1; i <= 30; i++)); do
+    if curl -sf "$url" >/dev/null 2>&1; then
+      local_app_info "Backend is healthy at $url"
+      return 0
+    fi
+    sleep 0.5
+  done
+
+  local_app_warn "Backend did not respond at $url. Check ${log_file}"
+  if [[ -f "$log_file" ]]; then
+    local_app_warn "Last lines from backend.log:"
+    tail -n 10 "$log_file" >&2 || true
+  fi
+  return 1
+}
+
 local_app_require_node() {
   bash "$REPO_ROOT/scripts/with_node.sh" --check
 }
@@ -357,18 +387,24 @@ local_app_stop_process() {
 }
 
 local_app_start_services() {
+  local_app_sync_backend
+
   local_app_assert_port_free backend "$BACKEND_PORT"
   local_app_assert_port_free frontend "$FRONTEND_PORT"
 
+  # Use `python -m uvicorn` so the reload worker stays on the project venv
+  # (the .venv/bin/uvicorn wrapper can retain stale shebangs after moving the repo).
   local_app_start_process backend "$PID_DIR/backend.pid" "$LOG_DIR/backend.log" \
-    bash -lc "cd \"$REPO_ROOT/backend\" && exec uv run uvicorn app.main:app --reload --host 0.0.0.0 --port \"$BACKEND_PORT\""
+    bash -lc "cd \"$REPO_ROOT/backend\" && export PATH=\"\$HOME/.local/bin:\$PATH\" && exec uv run python -m uvicorn app.main:app --reload --host 0.0.0.0 --port \"$BACKEND_PORT\""
+
+  local_app_wait_backend_health || true
 
   local_app_start_process frontend "$PID_DIR/frontend.pid" "$LOG_DIR/frontend.log" \
     bash "$REPO_ROOT/scripts/with_node.sh" --cwd "$REPO_ROOT/frontend" \
     npm run dev -- --hostname 0.0.0.0 --port "$FRONTEND_PORT"
 
   local_app_start_process rq-worker "$PID_DIR/rq-worker.pid" "$LOG_DIR/rq-worker.log" \
-    bash -lc "cd \"$REPO_ROOT/backend\" && exec uv run python ../scripts/rq worker"
+    bash -lc "cd \"$REPO_ROOT/backend\" && export PATH=\"\$HOME/.local/bin:\$PATH\" && exec uv run python ../scripts/rq worker"
 }
 
 local_app_stop_services() {

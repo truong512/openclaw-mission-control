@@ -36,6 +36,7 @@ import {
 import { DashboardShell } from "@/components/templates/DashboardShell";
 import { BoardChatComposer } from "@/components/BoardChatComposer";
 import { TaskCustomFieldsEditor } from "./TaskCustomFieldsEditor";
+import { TaskDescriptionEditor } from "@/components/molecules/TaskDescriptionEditor";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -1139,6 +1140,9 @@ export default function BoardDetailPage() {
   const [priority, setPriority] = useState("medium");
   const [createDueDate, setCreateDueDate] = useState("");
   const [createTagIds, setCreateTagIds] = useState<string[]>([]);
+  const [createDependsOnTaskIds, setCreateDependsOnTaskIds] = useState<
+    string[]
+  >([]);
   const [createCustomFieldValues, setCreateCustomFieldValues] =
     useState<TaskCustomFieldValues>({});
   const [createError, setCreateError] = useState<string | null>(null);
@@ -1973,6 +1977,7 @@ export default function BoardDetailPage() {
     setPriority("medium");
     setCreateDueDate("");
     setCreateTagIds([]);
+    setCreateDependsOnTaskIds([]);
     setCreateCustomFieldValues(defaultCreateCustomFieldValues);
     setCreateError(null);
   };
@@ -2008,6 +2013,7 @@ export default function BoardDetailPage() {
         priority,
         due_at: localDateInputToUtcIso(createDueDate),
         tag_ids: createTagIds,
+        depends_on_task_ids: createDependsOnTaskIds,
         custom_field_values: createCustomFieldPayload,
       };
       const result = await createTaskApiV1BoardsBoardIdTasksPost(
@@ -2239,6 +2245,27 @@ export default function BoardDetailPage() {
 
   const removeCreateTag = useCallback((tagId: string) => {
     setCreateTagIds((prev) => prev.filter((value) => value !== tagId));
+  }, []);
+
+  const createDependencyOptions = useMemo<DropdownSelectOption[]>(() => {
+    const alreadySelected = new Set(createDependsOnTaskIds);
+    return tasks.map((task) => ({
+      value: task.id,
+      label: `${task.title} (${task.status.replace(/_/g, " ")})`,
+      disabled: alreadySelected.has(task.id),
+    }));
+  }, [createDependsOnTaskIds, tasks]);
+
+  const addCreateDependency = useCallback((dependencyId: string) => {
+    setCreateDependsOnTaskIds((prev) =>
+      prev.includes(dependencyId) ? prev : [...prev, dependencyId],
+    );
+  }, []);
+
+  const removeCreateDependency = useCallback((dependencyId: string) => {
+    setCreateDependsOnTaskIds((prev) =>
+      prev.filter((value) => value !== dependencyId),
+    );
   }, []);
 
   const hasTaskChanges = useMemo(() => {
@@ -4160,11 +4187,13 @@ export default function BoardDetailPage() {
               <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                 Description
               </label>
-              <Textarea
+              <TaskDescriptionEditor
+                boardId={boardId}
+                taskId={selectedTask?.id ?? null}
                 value={editDescription}
-                onChange={(event) => setEditDescription(event.target.value)}
+                onChange={setEditDescription}
                 placeholder="Task details"
-                className="min-h-[140px]"
+                minHeightClassName="min-h-[140px]"
                 disabled={!selectedTask || isSavingTask || !canWrite}
               />
             </div>
@@ -4496,11 +4525,12 @@ export default function BoardDetailPage() {
               <label className="text-sm font-medium text-strong">
                 Description
               </label>
-              <Textarea
+              <TaskDescriptionEditor
+                boardId={boardId}
                 value={description}
-                onChange={(event) => setDescription(event.target.value)}
+                onChange={setDescription}
                 placeholder="Optional details"
-                className="min-h-[120px]"
+                minHeightClassName="min-h-[120px]"
                 disabled={!canWrite || isCreating}
               />
             </div>
@@ -4597,6 +4627,63 @@ export default function BoardDetailPage() {
                 </div>
               ) : (
                 <p className="text-xs text-slate-500">No tags assigned.</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-strong">
+                Dependencies
+              </label>
+              <p className="text-xs text-slate-500">
+                Tasks stay blocked until every dependency is marked done.
+              </p>
+              <DropdownSelect
+                ariaLabel="Add dependency"
+                placeholder="Add dependency"
+                options={createDependencyOptions}
+                onValueChange={addCreateDependency}
+                disabled={!canWrite || isCreating}
+                emptyMessage="No other tasks found."
+              />
+              {createDependsOnTaskIds.length === 0 ? (
+                <p className="text-xs text-slate-500">No dependencies.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {createDependsOnTaskIds.map((depId) => {
+                    const depTask = taskById.get(depId);
+                    const label = depTask?.title ?? depId;
+                    const statusLabel = depTask?.status
+                      ? depTask.status.replace(/_/g, " ")
+                      : null;
+                    const isDone = depTask?.status === "done";
+                    return (
+                      <span
+                        key={depId}
+                        className={cn(
+                          "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs",
+                          isDone
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                            : "border-slate-200 bg-slate-50 text-slate-700",
+                        )}
+                      >
+                        <span className="max-w-[18rem] truncate">{label}</span>
+                        {statusLabel ? (
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                            {statusLabel}
+                          </span>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => removeCreateDependency(depId)}
+                          className="rounded-full p-0.5 text-slate-500 transition hover:bg-white hover:text-slate-700"
+                          aria-label="Remove dependency"
+                          disabled={!canWrite || isCreating}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
               )}
             </div>
             {createError ? (

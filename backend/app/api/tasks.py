@@ -10,7 +10,8 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import asc, desc, or_
 from sqlmodel import col, select
 from sse_starlette.sse import EventSourceResponse
@@ -38,6 +39,7 @@ from app.models.task_custom_fields import (
     TaskCustomFieldDefinition,
     TaskCustomFieldValue,
 )
+from app.models.task_attachments import TaskAttachment
 from app.models.task_dependencies import TaskDependency
 from app.models.task_fingerprints import TaskFingerprint
 from app.models.tasks import Task
@@ -50,6 +52,7 @@ from app.schemas.task_custom_fields import (
     TaskCustomFieldValues,
     validate_custom_field_value,
 )
+from app.schemas.task_attachments import TaskAttachmentRead
 from app.schemas.tasks import TaskCommentCreate, TaskCommentRead, TaskCreate, TaskRead, TaskUpdate
 from app.services.activity_log import record_activity
 from app.services.approval_task_links import (
@@ -75,6 +78,11 @@ from app.services.task_dependencies import (
     dependent_task_ids,
     replace_task_dependencies,
     validate_dependency_update,
+)
+from app.services.task_attachments import (
+    attachment_storage_path,
+    create_task_attachment,
+    task_attachment_to_read,
 )
 
 if TYPE_CHECKING:
@@ -1576,6 +1584,56 @@ async def create_task(
         session,
         task=task,
         board_id=board.id,
+    )
+
+
+@router.post("/attachments", response_model=TaskAttachmentRead)
+async def upload_task_attachment(
+    file: UploadFile = File(...),
+    task_id: UUID | None = Query(default=None),
+    board: Board = BOARD_WRITE_DEP,
+    session: AsyncSession = SESSION_DEP,
+    auth: AuthContext = USER_AUTH_DEP,
+) -> TaskAttachmentRead:
+    """Upload an image attachment for embedding in a task description."""
+    task: Task | None = None
+    if task_id is not None:
+        task = await Task.objects.by_id(task_id).first(session)
+        if task is None or task.board_id != board.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    attachment = await create_task_attachment(
+        session,
+        board=board,
+        upload=file,
+        task=task,
+        created_by_user_id=auth.user.id if auth.user is not None else None,
+    )
+    await session.commit()
+    await session.refresh(attachment)
+    return TaskAttachmentRead.model_validate(task_attachment_to_read(attachment))
+
+
+@router.get("/attachments/{attachment_id}")
+async def get_task_attachment(
+    attachment_id: UUID,
+    board: Board = BOARD_READ_DEP,
+    session: AsyncSession = SESSION_DEP,
+) -> FileResponse:
+    """Download a task description attachment."""
+    attachment = await TaskAttachment.objects.by_id(attachment_id).first(session)
+    if attachment is None or attachment.board_id != board.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    path = attachment_storage_path(
+        organization_id=board.organization_id,
+        board_id=board.id,
+        storage_name=attachment.storage_name,
+    )
+    if not path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return FileResponse(
+        path,
+        media_type=attachment.content_type,
+        filename=attachment.filename,
     )
 
 

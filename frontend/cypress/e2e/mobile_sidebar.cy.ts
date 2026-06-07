@@ -91,7 +91,33 @@ describe("/dashboard - mobile sidebar", () => {
     visitDashboardAuthenticated();
 
     cy.get('[aria-label="Toggle navigation"]').should("not.be.visible");
+    cy.get("aside")
+      .find('[aria-label="Collapse navigation"]')
+      .should("be.visible");
     cy.get("aside").should("be.visible");
+  });
+
+  it("desktop: collapse and expand navigation", () => {
+    cy.viewport(1280, 800);
+    visitDashboardAuthenticated();
+
+    cy.get("[data-sidebar-desktop]").should(
+      "have.attr",
+      "data-sidebar-desktop",
+      "expanded",
+    );
+    cy.get("aside").find('[aria-label="Collapse navigation"]').click();
+    cy.get("[data-sidebar-desktop]").should(
+      "have.attr",
+      "data-sidebar-desktop",
+      "collapsed",
+    );
+    cy.get("aside").find('[aria-label="Expand navigation"]').click();
+    cy.get("[data-sidebar-desktop]").should(
+      "have.attr",
+      "data-sidebar-desktop",
+      "expanded",
+    );
   });
 
   it("mobile: click hamburger opens sidebar and shows backdrop", () => {
