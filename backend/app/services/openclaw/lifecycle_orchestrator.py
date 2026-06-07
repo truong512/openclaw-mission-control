@@ -28,6 +28,7 @@ from app.services.openclaw.lifecycle_queue import (
     QueuedAgentLifecycleReconcile,
     enqueue_lifecycle_reconcile,
 )
+from app.services.agent_capabilities import build_agent_capability_context
 from app.services.openclaw.provisioning import OpenClawGatewayProvisioner
 from app.services.organizations import get_org_owner_user
 
@@ -106,6 +107,11 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
             return locked
 
         try:
+            extra_context = await build_agent_capability_context(
+                self.session,
+                agent=locked,
+                board=board,
+            )
             await OpenClawGatewayProvisioner().apply_agent_lifecycle(
                 agent=locked,
                 gateway=gateway,
@@ -118,6 +124,7 @@ class AgentLifecycleOrchestrator(OpenClawDBService):
                 wake=wake,
                 deliver_wakeup=deliver_wakeup,
                 wakeup_verb=wakeup_verb,
+                extra_context=extra_context,
             )
         except OpenClawGatewayError as exc:
             locked.last_provision_error = str(exc)

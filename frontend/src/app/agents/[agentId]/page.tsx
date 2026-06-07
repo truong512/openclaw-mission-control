@@ -32,6 +32,7 @@ import type {
   AgentRead,
   BoardRead,
 } from "@/api/generated/model";
+import { AgentAssignedSkillsSection } from "@/components/agents/AgentAssignedSkillsSection";
 import { Markdown } from "@/components/atoms/Markdown";
 import { StatusPill } from "@/components/atoms/StatusPill";
 import { DashboardSidebar } from "@/components/organisms/DashboardSidebar";
@@ -290,6 +291,34 @@ export default function AgentDetailPage() {
                           {formatTimestamp(agent.created_at)}
                         </p>
                       </div>
+                    </div>
+                  </div>
+
+                  <AgentAssignedSkillsSection
+                    gatewayId={agent.gateway_id}
+                    selectedSkillIds={(agent.assigned_skills ?? []).map(
+                      (skill) => skill.id,
+                    )}
+                    assignedSkillIds={(agent.assigned_skills ?? []).map(
+                      (skill) => skill.id,
+                    )}
+                    editHref={`/agents/${agent.id}/edit`}
+                  />
+
+                  <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--surface)] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-quiet">
+                      Model limits
+                    </p>
+                    <div className="mt-4 space-y-2 text-sm text-muted">
+                      <p>
+                        Primary: {agent.primary_model ?? "Gateway default"}
+                      </p>
+                      <p>
+                        Allowed:{" "}
+                        {agent.allowed_models && agent.allowed_models.length > 0
+                          ? agent.allowed_models.join(", ")
+                          : "Gateway default"}
+                      </p>
                     </div>
                   </div>
 

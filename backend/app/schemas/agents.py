@@ -16,6 +16,14 @@ from app.schemas.common import NonEmptyStr
 _RUNTIME_TYPE_REFERENCES = (datetime, UUID, NonEmptyStr)
 
 
+class AgentAssignedSkillRead(SQLModel):
+    """Skill assigned to an agent for routing and delegation."""
+
+    id: UUID = Field(description="Marketplace skill UUID.")
+    name: str = Field(description="Human-readable skill name.")
+    category: str | None = Field(default=None, description="Optional skill category.")
+
+
 def _normalize_identity_profile(
     profile: object,
 ) -> dict[str, str] | None:
@@ -101,6 +109,30 @@ class AgentBase(SQLModel):
         description="Template representing deeper agent instructions.",
         examples=["When critical blockers appear, escalate in plain language."],
     )
+    allowed_models: list[str] | None = Field(
+        default=None,
+        description="Optional allowlist of LLM model ids this agent may use.",
+        examples=[["openai-codex/gpt-5.2", "anthropic/claude-sonnet-4"]],
+    )
+    primary_model: str | None = Field(
+        default=None,
+        description="Preferred model id; must be in allowed_models when both are set.",
+        examples=["openai-codex/gpt-5.2"],
+    )
+
+    @field_validator("allowed_models", mode="before")
+    @classmethod
+    def normalize_allowed_models(cls, value: object) -> list[str] | None:
+        from app.services.agent_capabilities import normalize_model_ids
+
+        return normalize_model_ids(value)
+
+    @field_validator("primary_model", mode="before")
+    @classmethod
+    def normalize_primary_model_field(cls, value: object) -> str | None:
+        from app.services.agent_capabilities import normalize_primary_model
+
+        return normalize_primary_model(value)
 
     @field_validator("identity_template", "soul_template", mode="before")
     @classmethod
@@ -125,6 +157,12 @@ class AgentBase(SQLModel):
 
 class AgentCreate(AgentBase):
     """Payload for creating a new agent."""
+
+    skill_ids: list[UUID] | None = Field(
+        default=None,
+        description="Marketplace skill ids assigned to this agent.",
+        examples=[["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"]],
+    )
 
 
 class AgentUpdate(SQLModel):
@@ -190,6 +228,35 @@ class AgentUpdate(SQLModel):
         description="Optional replacement soul template.",
         examples=["Escalate only after checking all known mitigations."],
     )
+    allowed_models: list[str] | None = Field(
+        default=None,
+        description="Optional replacement model allowlist.",
+        examples=[["openai-codex/gpt-5.2"]],
+    )
+    primary_model: str | None = Field(
+        default=None,
+        description="Optional replacement preferred model id.",
+        examples=["openai-codex/gpt-5.2"],
+    )
+    skill_ids: list[UUID] | None = Field(
+        default=None,
+        description="Replace assigned marketplace skills when provided.",
+        examples=[["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"]],
+    )
+
+    @field_validator("allowed_models", mode="before")
+    @classmethod
+    def normalize_allowed_models(cls, value: object) -> list[str] | None:
+        from app.services.agent_capabilities import normalize_model_ids
+
+        return normalize_model_ids(value)
+
+    @field_validator("primary_model", mode="before")
+    @classmethod
+    def normalize_primary_model_field(cls, value: object) -> str | None:
+        from app.services.agent_capabilities import normalize_primary_model
+
+        return normalize_primary_model(value)
 
     @field_validator("identity_template", "soul_template", mode="before")
     @classmethod
@@ -247,6 +314,10 @@ class AgentRead(AgentBase):
     )
     created_at: datetime = Field(description="Creation timestamp.")
     updated_at: datetime = Field(description="Last update timestamp.")
+    assigned_skills: list[AgentAssignedSkillRead] = Field(
+        default_factory=list,
+        description="Marketplace skills assigned to this agent.",
+    )
 
 
 class AgentHeartbeat(SQLModel):

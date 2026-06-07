@@ -31,6 +31,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AgentCapabilitiesFields,
+  buildAgentCapabilityPayload,
+  formatModelList,
+} from "@/components/agents/AgentCapabilitiesFields";
 import { AGENT_EMOJI_OPTIONS } from "@/lib/agent-emoji";
 import { DEFAULT_IDENTITY_PROFILE } from "@/lib/agent-templates";
 
@@ -97,6 +102,13 @@ export default function EditAgentPage() {
   const [identityProfile, setIdentityProfile] = useState<
     IdentityProfile | undefined
   >(undefined);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[] | undefined>(
+    undefined,
+  );
+  const [allowedModelsText, setAllowedModelsText] = useState<string | undefined>(
+    undefined,
+  );
+  const [primaryModel, setPrimaryModel] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   const boardsQuery = useListBoardsApiV1BoardsGet<
@@ -179,6 +191,12 @@ export default function EditAgentPage() {
     isGatewayMain ?? Boolean(loadedAgent?.is_gateway_main);
   const resolvedHeartbeatEvery = heartbeatEvery ?? loadedHeartbeat.every;
   const resolvedIdentityProfile = identityProfile ?? loadedIdentityProfile;
+  const resolvedSelectedSkillIds =
+    selectedSkillIds ??
+    (loadedAgent?.assigned_skills ?? []).map((skill) => skill.id);
+  const resolvedAllowedModelsText =
+    allowedModelsText ?? formatModelList(loadedAgent?.allowed_models);
+  const resolvedPrimaryModel = primaryModel ?? loadedAgent?.primary_model ?? "";
 
   const resolvedBoardId = useMemo(() => {
     if (resolvedIsGatewayMain) return boardId ?? "";
@@ -240,6 +258,14 @@ export default function EditAgentPage() {
     if (Boolean(loadedAgent.is_gateway_main) !== resolvedIsGatewayMain) {
       payload.is_gateway_main = resolvedIsGatewayMain;
     }
+    Object.assign(
+      payload,
+      buildAgentCapabilityPayload({
+        selectedSkillIds: resolvedSelectedSkillIds,
+        allowedModelsText: resolvedAllowedModelsText,
+        primaryModel: resolvedPrimaryModel,
+      }),
+    );
 
     updateMutation.mutate({ agentId, params: { force: true }, data: payload });
   };
@@ -419,6 +445,24 @@ export default function EditAgentPage() {
                 disabled={isLoading}
               />
             </div>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Capabilities
+          </p>
+          <div className="mt-4">
+            <AgentCapabilitiesFields
+              gatewayId={loadedAgent?.gateway_id}
+              selectedSkillIds={resolvedSelectedSkillIds}
+              onSelectedSkillIdsChange={setSelectedSkillIds}
+              allowedModelsText={resolvedAllowedModelsText}
+              onAllowedModelsTextChange={setAllowedModelsText}
+              primaryModel={resolvedPrimaryModel}
+              onPrimaryModelChange={setPrimaryModel}
+              disabled={isLoading}
+            />
           </div>
         </div>
 

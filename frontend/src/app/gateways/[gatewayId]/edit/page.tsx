@@ -16,6 +16,7 @@ import {
 import { useOrganizationMembership } from "@/lib/use-organization-membership";
 import type { GatewayUpdate } from "@/api/generated/model";
 import { GatewayForm } from "@/components/gateways/GatewayForm";
+import { GatewayInstalledSkillsSection } from "@/components/gateways/GatewayInstalledSkillsSection";
 import { DashboardPageLayout } from "@/components/templates/DashboardPageLayout";
 import {
   DEFAULT_WORKSPACE_ROOT,
@@ -169,49 +170,56 @@ export default function EditGatewayPage() {
       isAdmin={isAdmin}
       adminOnlyMessage="Only organization owners and admins can edit gateways."
     >
-      <GatewayForm
-        name={resolvedName}
-        gatewayUrl={resolvedGatewayUrl}
-        gatewayToken={resolvedGatewayToken}
-        disableDevicePairing={resolvedDisableDevicePairing}
-        workspaceRoot={resolvedWorkspaceRoot}
-        allowInsecureTls={resolvedAllowInsecureTls}
-        gatewayUrlError={gatewayUrlError}
-        gatewayCheckStatus={gatewayCheckStatus}
-        gatewayCheckMessage={gatewayCheckMessage}
-        errorMessage={errorMessage}
-        isLoading={isLoading}
-        canSubmit={canSubmit}
-        workspaceRootPlaceholder={DEFAULT_WORKSPACE_ROOT}
-        cancelLabel="Back"
-        submitLabel="Save changes"
-        submitBusyLabel="Saving…"
-        onSubmit={handleSubmit}
-        onCancel={() => router.push("/gateways")}
-        onNameChange={setName}
-        onGatewayUrlChange={(next) => {
-          setGatewayUrl(next);
-          setGatewayUrlError(null);
-          setGatewayCheckStatus("idle");
-          setGatewayCheckMessage(null);
-        }}
-        onGatewayTokenChange={(next) => {
-          setGatewayToken(next);
-          setGatewayCheckStatus("idle");
-          setGatewayCheckMessage(null);
-        }}
-        onDisableDevicePairingChange={(next) => {
-          setDisableDevicePairing(next);
-          setGatewayCheckStatus("idle");
-          setGatewayCheckMessage(null);
-        }}
-        onWorkspaceRootChange={setWorkspaceRoot}
-        onAllowInsecureTlsChange={(next) => {
-          setAllowInsecureTls(next);
-          setGatewayCheckStatus("idle");
-          setGatewayCheckMessage(null);
-        }}
-      />
+      <div className="space-y-6">
+        <GatewayInstalledSkillsSection
+          gatewayId={gatewayId}
+          enabled={Boolean(isSignedIn && isAdmin)}
+        />
+
+        <GatewayForm
+          name={resolvedName}
+          gatewayUrl={resolvedGatewayUrl}
+          gatewayToken={resolvedGatewayToken}
+          disableDevicePairing={resolvedDisableDevicePairing}
+          workspaceRoot={resolvedWorkspaceRoot}
+          allowInsecureTls={resolvedAllowInsecureTls}
+          gatewayUrlError={gatewayUrlError}
+          gatewayCheckStatus={gatewayCheckStatus}
+          gatewayCheckMessage={gatewayCheckMessage}
+          errorMessage={errorMessage}
+          isLoading={isLoading}
+          canSubmit={canSubmit}
+          workspaceRootPlaceholder={DEFAULT_WORKSPACE_ROOT}
+          cancelLabel="Back"
+          submitLabel="Save changes"
+          submitBusyLabel="Saving…"
+          onSubmit={handleSubmit}
+          onCancel={() => router.push("/gateways")}
+          onNameChange={setName}
+          onGatewayUrlChange={(next) => {
+            setGatewayUrl(next);
+            setGatewayUrlError(null);
+            setGatewayCheckStatus("idle");
+            setGatewayCheckMessage(null);
+          }}
+          onGatewayTokenChange={(next) => {
+            setGatewayToken(next);
+            setGatewayCheckStatus("idle");
+            setGatewayCheckMessage(null);
+          }}
+          onDisableDevicePairingChange={(next) => {
+            setDisableDevicePairing(next);
+            setGatewayCheckStatus("idle");
+            setGatewayCheckMessage(null);
+          }}
+          onWorkspaceRootChange={setWorkspaceRoot}
+          onAllowInsecureTlsChange={(next) => {
+            setAllowInsecureTls(next);
+            setGatewayCheckStatus("idle");
+            setGatewayCheckMessage(null);
+          }}
+        />
+      </div>
     </DashboardPageLayout>
   );
 }

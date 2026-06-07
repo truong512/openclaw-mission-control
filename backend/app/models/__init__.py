@@ -17,7 +17,7 @@ from app.models.organization_invite_board_access import OrganizationInviteBoardA
 from app.models.organization_invites import OrganizationInvite
 from app.models.organization_members import OrganizationMember
 from app.models.organizations import Organization
-from app.models.skills import GatewayInstalledSkill, MarketplaceSkill, SkillPack
+from app.models.skills import AgentSkill, GatewayInstalledSkill, MarketplaceSkill, SkillPack
 from app.models.tag_assignments import TagAssignment
 from app.models.tags import Tag
 from app.models.task_custom_fields import (
@@ -43,6 +43,7 @@ __all__ = [
     "BoardGroup",
     "Board",
     "Gateway",
+    "AgentSkill",
     "GatewayInstalledSkill",
     "MarketplaceSkill",
     "SkillPack",

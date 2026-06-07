@@ -8,6 +8,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/auth/clerk";
 import { useQueryClient } from "@tanstack/react-query";
 import { AgentsTable } from "@/components/agents/AgentsTable";
+import { GatewayInstalledSkillsSection } from "@/components/gateways/GatewayInstalledSkillsSection";
 import { DashboardPageLayout } from "@/components/templates/DashboardPageLayout";
 import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/ui/confirm-action-dialog";
@@ -88,6 +89,7 @@ export default function GatewayDetailPage() {
       refetchInterval: 15_000,
     },
   });
+
   const deleteMutation = useDeleteAgentApiV1AgentsAgentIdDelete<
     ApiError,
     { previous?: listAgentsApiV1AgentsGetResponse }
@@ -279,6 +281,11 @@ export default function GatewayDetailPage() {
                 </div>
               </div>
             </div>
+
+            <GatewayInstalledSkillsSection
+              gatewayId={gatewayId}
+              enabled={Boolean(isSignedIn && isAdmin)}
+            />
 
             <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">

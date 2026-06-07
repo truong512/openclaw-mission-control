@@ -964,6 +964,7 @@ async def list_marketplace_skills(
     category: str | None = Query(default=None),
     risk: str | None = Query(default=None),
     pack_id: UUID | None = Query(default=None, alias="pack_id"),
+    installed: bool | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = SESSION_DEP,
@@ -971,7 +972,23 @@ async def list_marketplace_skills(
 ) -> list[MarketplaceSkillCardRead]:
     """List marketplace cards for an org and annotate install state for a gateway."""
     gateway = await _require_gateway_for_org(gateway_id=gateway_id, session=session, ctx=ctx)
+    installations = await GatewayInstalledSkill.objects.filter_by(gateway_id=gateway.id).all(
+        session
+    )
+    installed_by_skill_id = {record.skill_id: record for record in installations}
+    installed_skill_ids = list(installed_by_skill_id.keys())
+
     skills_query = MarketplaceSkill.objects.filter_by(organization_id=ctx.organization.id)
+    if installed is True:
+        if not installed_skill_ids:
+            if limit is not None:
+                response.headers["X-Total-Count"] = "0"
+                response.headers["X-Limit"] = str(limit)
+                response.headers["X-Offset"] = str(offset)
+            return []
+        skills_query = skills_query.filter(col(MarketplaceSkill.id).in_(installed_skill_ids))
+    elif installed is False and installed_skill_ids:
+        skills_query = skills_query.filter(col(MarketplaceSkill.id).not_in(installed_skill_ids))
 
     normalized_category = (category or "").strip().lower()
     if normalized_category:
@@ -1035,10 +1052,6 @@ async def list_marketplace_skills(
     if limit is not None:
         ordered_query = ordered_query.offset(offset).limit(limit)
     skills = await ordered_query.all(session)
-    installations = await GatewayInstalledSkill.objects.filter_by(gateway_id=gateway.id).all(
-        session
-    )
-    installed_by_skill_id = {record.skill_id: record for record in installations}
     return [
         _as_card(skill=skill, installation=installed_by_skill_id.get(skill.id)) for skill in skills
     ]

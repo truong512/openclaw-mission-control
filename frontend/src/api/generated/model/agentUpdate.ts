@@ -27,4 +27,10 @@ export interface AgentUpdate {
   soul_template?: string | null;
   /** Optional replacement lifecycle status. */
   status?: string | null;
+  /** Optional replacement model allowlist. */
+  allowed_models?: string[] | null;
+  /** Optional replacement preferred model id. */
+  primary_model?: string | null;
+  /** Replace assigned marketplace skills when provided. */
+  skill_ids?: string[] | null;
 }

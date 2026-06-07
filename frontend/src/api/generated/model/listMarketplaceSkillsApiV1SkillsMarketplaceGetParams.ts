@@ -11,6 +11,7 @@ export type ListMarketplaceSkillsApiV1SkillsMarketplaceGetParams = {
   category?: string | null;
   risk?: string | null;
   pack_id?: string | null;
+  installed?: boolean | null;
   limit?: number | null;
   /**
    * @minimum 0

@@ -28,4 +28,10 @@ export interface AgentCreate {
   soul_template?: string | null;
   /** Current lifecycle state used by coordinator logic. */
   status?: string;
+  /** Optional allowlist of LLM model ids this agent may use. */
+  allowed_models?: string[] | null;
+  /** Preferred model id; must be in allowed_models when both are set. */
+  primary_model?: string | null;
+  /** Marketplace skill ids assigned to this agent. */
+  skill_ids?: string[] | null;
 }

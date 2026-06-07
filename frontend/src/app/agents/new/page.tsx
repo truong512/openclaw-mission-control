@@ -28,6 +28,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AgentCapabilitiesFields,
+  buildAgentCapabilityPayload,
+} from "@/components/agents/AgentCapabilitiesFields";
 import { AGENT_EMOJI_OPTIONS } from "@/lib/agent-emoji";
 import { DEFAULT_IDENTITY_PROFILE } from "@/lib/agent-templates";
 
@@ -67,6 +71,9 @@ export default function NewAgentPage() {
   const [identityProfile, setIdentityProfile] = useState<IdentityProfile>({
     ...DEFAULT_IDENTITY_PROFILE,
   });
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const [allowedModelsText, setAllowedModelsText] = useState("");
+  const [primaryModel, setPrimaryModel] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const boardsQuery = useListBoardsApiV1BoardsGet<
@@ -95,6 +102,8 @@ export default function NewAgentPage() {
   const boards =
     boardsQuery.data?.status === 200 ? (boardsQuery.data.data.items ?? []) : [];
   const displayBoardId = boardId || boards[0]?.id || "";
+  const selectedBoard = boards.find((board) => board.id === displayBoardId) ?? null;
+  const gatewayId = selectedBoard?.gateway_id ?? null;
   const isLoading = boardsQuery.isLoading || createAgentMutation.isPending;
   const errorMessage = error ?? boardsQuery.error?.message ?? null;
 
@@ -124,6 +133,11 @@ export default function NewAgentPage() {
         identity_profile: normalizeIdentityProfile(
           identityProfile,
         ) as unknown as Record<string, unknown> | null,
+        ...buildAgentCapabilityPayload({
+          selectedSkillIds,
+          allowedModelsText,
+          primaryModel,
+        }),
       },
     });
   };
@@ -252,6 +266,24 @@ export default function NewAgentPage() {
                 disabled={isLoading}
               />
             </div>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Capabilities
+          </p>
+          <div className="mt-4">
+            <AgentCapabilitiesFields
+              gatewayId={gatewayId}
+              selectedSkillIds={selectedSkillIds}
+              onSelectedSkillIdsChange={setSelectedSkillIds}
+              allowedModelsText={allowedModelsText}
+              onAllowedModelsTextChange={setAllowedModelsText}
+              primaryModel={primaryModel}
+              onPrimaryModelChange={setPrimaryModel}
+              disabled={isLoading}
+            />
           </div>
         </div>
 

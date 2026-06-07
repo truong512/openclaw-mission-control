@@ -8,6 +8,7 @@
 export * from "./activityEventRead";
 export * from "./activityEventReadRouteParams";
 export * from "./activityTaskCommentFeedItemRead";
+export * from "./agentAssignedSkillRead";
 export * from "./agentCreate";
 export * from "./agentCreateHeartbeatConfig";
 export * from "./agentCreateIdentityProfile";

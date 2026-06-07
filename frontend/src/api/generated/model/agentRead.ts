@@ -4,6 +4,7 @@
  * Mission Control API
  * OpenAPI spec version: 0.1.0
  */
+import type { AgentAssignedSkillRead } from "./agentAssignedSkillRead";
 import type { AgentReadHeartbeatConfig } from "./agentReadHeartbeatConfig";
 import type { AgentReadIdentityProfile } from "./agentReadIdentityProfile";
 
@@ -44,4 +45,10 @@ export interface AgentRead {
   status?: string;
   /** Last update timestamp. */
   updated_at: string;
+  /** Optional allowlist of LLM model ids this agent may use. */
+  allowed_models?: string[] | null;
+  /** Preferred model id; must be in allowed_models when both are set. */
+  primary_model?: string | null;
+  /** Marketplace skills assigned to this agent. */
+  assigned_skills?: AgentAssignedSkillRead[];
 }

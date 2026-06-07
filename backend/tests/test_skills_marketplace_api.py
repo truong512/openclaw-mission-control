@@ -282,6 +282,70 @@ async def test_list_marketplace_skills_marks_installed_cards() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_marketplace_skills_installed_filter() -> None:
+    engine = await _make_engine()
+    session_maker = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    try:
+        async with session_maker() as session:
+            organization, gateway = await _seed_base(session)
+            first = MarketplaceSkill(
+                organization_id=organization.id,
+                name="First Skill",
+                source_url="https://example.com/skills/first",
+            )
+            second = MarketplaceSkill(
+                organization_id=organization.id,
+                name="Second Skill",
+                source_url="https://example.com/skills/second",
+            )
+            session.add(first)
+            session.add(second)
+            await session.commit()
+            await session.refresh(first)
+            await session.refresh(second)
+
+            session.add(
+                GatewayInstalledSkill(
+                    gateway_id=gateway.id,
+                    skill_id=first.id,
+                ),
+            )
+            await session.commit()
+
+        app = _build_test_app(session_maker, organization=organization)
+        async with AsyncClient(
+            transport=ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            installed_response = await client.get(
+                "/api/v1/skills/marketplace",
+                params={"gateway_id": str(gateway.id), "installed": "true"},
+            )
+            not_installed_response = await client.get(
+                "/api/v1/skills/marketplace",
+                params={"gateway_id": str(gateway.id), "installed": "false"},
+            )
+
+        assert installed_response.status_code == 200
+        installed_cards = installed_response.json()
+        assert len(installed_cards) == 1
+        assert installed_cards[0]["id"] == str(first.id)
+        assert installed_cards[0]["installed"] is True
+
+        assert not_installed_response.status_code == 200
+        not_installed_cards = not_installed_response.json()
+        assert len(not_installed_cards) == 1
+        assert not_installed_cards[0]["id"] == str(second.id)
+        assert not_installed_cards[0]["installed"] is False
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_sync_pack_clones_and_upserts_skills(monkeypatch: pytest.MonkeyPatch) -> None:
     engine = await _make_engine()
     session_maker = async_sessionmaker(

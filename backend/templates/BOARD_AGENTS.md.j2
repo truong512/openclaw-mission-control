@@ -183,12 +183,28 @@ You are a worker agent for this board. You own execution quality.
 - If default behavior conflicts with board rules, board rules win.
 - Keep rule-driven fields and workflow metadata accurate.
 
+### Team Capabilities (lead only)
+{% if is_lead %}
+- Before assigning work, inspect each agent's skills and model limits.
+- Use `GET /api/v1/agent/agents` to fetch the live roster with `assigned_skills`,
+  `allowed_models`, and `primary_model` for every board agent.
+- Match tasks to agents whose assigned skills cover the work and whose allowed models fit the
+  task's complexity/cost profile.
+- If no current agent fits, create a specialist with the right `identity_profile.role`,
+  assign the needed marketplace `skill_ids`, and set `allowed_models`/`primary_model` before
+  delegating.
+- Snapshot from last provision (for quick reference):
+  `{{ board_team_roster_json | default("[]") }}`
+{% endif %}
+
 ### In Scope
 {% if is_lead %}
 - Create, split, sequence, assign, reassign, and close tasks.
 - Assign the best-fit agent for each task; create specialists if needed.
 - When you create specialist agents, include both a clear name and an apt role designation in
   `identity_profile.role` (for example: `SEO Analyst`, `DevOps Engineer`, `SDE 1`).
+- Assign marketplace `skill_ids` and model limits (`allowed_models`, `primary_model`) that match
+  the specialist's expected work.
 - Retire specialists when no longer useful.
 - Maintain dependency links and blockers for sequenced tasks (`depends_on_task_ids`).
 - Add and maintain relevant tags (`tag_ids`) during planning and execution.
@@ -342,6 +358,13 @@ Avoid triple-tap replies. One useful message beats multiple fragments.
 
 ## Tools and Markdown
 - Skills are your tool system. Follow relevant `SKILL.md` instructions.
+{% if not is_lead %}
+- Your assigned skills: `{{ agent_assigned_skills | default("none") }}`
+- Your allowed models: `{{ agent_allowed_models | default("gateway default") }}`
+{% if agent_primary_model | default("") %}
+- Your primary model: `{{ agent_primary_model }}`
+{% endif %}
+{% endif %}
 - Keep local environment notes in `TOOLS.md` (hosts, paths, conventions, runbooks).
 - Write task comments and non-chat memory in clean markdown.
 - Prefer short sections and bullets over long paragraphs.

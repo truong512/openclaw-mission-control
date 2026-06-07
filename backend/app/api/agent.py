@@ -524,14 +524,11 @@ async def list_agents(
         statement = statement.where(Agent.board_id == board_id)
     statement = statement.order_by(col(Agent.created_at).desc())
 
-    def _transform(items: Sequence[Any]) -> Sequence[Any]:
+    service = AgentLifecycleService(session)
+
+    async def _transform(items: Sequence[Any]) -> Sequence[Any]:
         agents = _coerce_agent_items(items)
-        return [
-            AgentLifecycleService.to_agent_read(
-                AgentLifecycleService.with_computed_status(agent),
-            )
-            for agent in agents
-        ]
+        return await service.enrich_agent_reads(agents)
 
     return await paginate(session, statement, transformer=_transform)
 

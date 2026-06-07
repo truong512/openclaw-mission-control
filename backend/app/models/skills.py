@@ -69,6 +69,25 @@ class SkillPack(TenantScoped, table=True):
     updated_at: datetime = Field(default_factory=utcnow)
 
 
+class AgentSkill(QueryModel, table=True):
+    """Associates marketplace skills with individual agents."""
+
+    __tablename__ = "agent_skills"  # pyright: ignore[reportAssignmentType]
+    __table_args__ = (
+        UniqueConstraint(
+            "agent_id",
+            "skill_id",
+            name="uq_agent_skills_agent_id_skill_id",
+        ),
+    )
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    agent_id: UUID = Field(foreign_key="agents.id", index=True)
+    skill_id: UUID = Field(foreign_key="marketplace_skills.id", index=True)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
 class GatewayInstalledSkill(QueryModel, table=True):
     """Marks that a marketplace skill is installed for a specific gateway."""
 

@@ -49,5 +49,10 @@ class Agent(QueryModel, table=True):
     checkin_deadline_at: datetime | None = Field(default=None)
     last_provision_error: str | None = Field(default=None, sa_column=Column(Text))
     is_board_lead: bool = Field(default=False, index=True)
+    allowed_models: list[str] | None = Field(
+        default=None,
+        sa_column=Column(JSON),
+    )
+    primary_model: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

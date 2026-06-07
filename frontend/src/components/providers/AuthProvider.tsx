@@ -1,7 +1,7 @@
 "use client";
 
 import { ClerkProvider } from "@clerk/nextjs";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { isLikelyValidClerkPublishableKey } from "@/auth/clerkKey";
 import {
@@ -11,19 +11,40 @@ import {
 } from "@/auth/localAuth";
 import { LocalAuthLogin } from "@/components/organisms/LocalAuthLogin";
 
+function LocalAuthBootShell() {
+  return <div className="min-h-screen bg-app" aria-hidden="true" />;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const localMode = isLocalAuthMode();
+  const [localAuthReady, setLocalAuthReady] = useState(false);
+  const [hasLocalToken, setHasLocalToken] = useState(false);
 
   useEffect(() => {
     if (!localMode) {
       clearLocalAuthToken();
+      return;
     }
+
+    setHasLocalToken(!!getLocalAuthToken());
+    setLocalAuthReady(true);
   }, [localMode]);
 
   if (localMode) {
-    if (!getLocalAuthToken()) {
-      return <LocalAuthLogin />;
+    if (!localAuthReady) {
+      return <LocalAuthBootShell />;
     }
+
+    if (!hasLocalToken) {
+      return (
+        <LocalAuthLogin
+          onAuthenticated={() => {
+            setHasLocalToken(true);
+          }}
+        />
+      );
+    }
+
     return <>{children}</>;
   }
 

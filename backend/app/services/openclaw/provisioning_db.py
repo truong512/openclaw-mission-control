@@ -37,11 +37,17 @@ from app.models.gateways import Gateway
 from app.models.organizations import Organization
 from app.models.tasks import Task
 from app.schemas.agents import (
+    AgentAssignedSkillRead,
     AgentCreate,
     AgentHeartbeat,
     AgentHeartbeatCreate,
     AgentRead,
     AgentUpdate,
+)
+from app.services.agent_capabilities import (
+    load_assigned_skills_for_agents,
+    sync_agent_skills,
+    validate_agent_model_limits,
 )
 from app.schemas.common import OkResponse
 from app.schemas.gateways import GatewayTemplatesSyncError, GatewayTemplatesSyncResult
@@ -843,11 +849,32 @@ class AgentLifecycleService(OpenClawDBService):
         return agent.board_id is None
 
     @classmethod
-    def to_agent_read(cls, agent: Agent) -> AgentRead:
+    def to_agent_read(
+        cls,
+        agent: Agent,
+        *,
+        assigned_skills: list[AgentAssignedSkillRead] | None = None,
+    ) -> AgentRead:
         model = AgentRead.model_validate(agent, from_attributes=True)
         return model.model_copy(
-            update={"is_gateway_main": cls.is_gateway_main(agent)},
+            update={
+                "is_gateway_main": cls.is_gateway_main(agent),
+                "assigned_skills": assigned_skills or [],
+            },
         )
+
+    async def enrich_agent_reads(self, agents: list[Agent]) -> list[AgentRead]:
+        skill_map = await load_assigned_skills_for_agents(
+            self.session,
+            [agent.id for agent in agents],
+        )
+        return [
+            self.to_agent_read(
+                self.with_computed_status(agent),
+                assigned_skills=skill_map.get(agent.id, []),
+            )
+            for agent in agents
+        ]
 
     @staticmethod
     def coerce_agent_items(items: Sequence[Any]) -> list[Agent]:
@@ -1492,9 +1519,9 @@ class AgentLifecycleService(OpenClawDBService):
             )
         statement = statement.order_by(col(Agent.created_at).desc())
 
-        def _transform(items: Sequence[Any]) -> Sequence[Any]:
+        async def _transform(items: Sequence[Any]) -> Sequence[Any]:
             agents = self.coerce_agent_items(items)
-            return [self.to_agent_read(self.with_computed_status(agent)) for agent in agents]
+            return await self.enrich_agent_reads(agents)
 
         return await paginate(self.session, statement, transformer=_transform)
 
@@ -1562,6 +1589,11 @@ class AgentLifecycleService(OpenClawDBService):
         await self.enforce_board_spawn_limit_for_lead(board=board, actor=actor)
         gateway, _client_config = await self.require_gateway(board)
         data = payload.model_dump()
+        skill_ids = data.pop("skill_ids", None)
+        validate_agent_model_limits(
+            allowed_models=data.get("allowed_models"),
+            primary_model=data.get("primary_model"),
+        )
         data["gateway_id"] = gateway.id
         requested_name = (data.get("name") or "").strip()
         await self.ensure_unique_agent_name(
@@ -1570,6 +1602,20 @@ class AgentLifecycleService(OpenClawDBService):
             requested_name=requested_name,
         )
         agent, raw_token = await self.persist_new_agent(data=data)
+        if actor.actor_type == "user":
+            ctx = await self.require_user_context(actor.user)
+            organization_id = ctx.organization.id
+        else:
+            organization_id = board.organization_id
+        await sync_agent_skills(
+            self.session,
+            agent_id=agent.id,
+            skill_ids=skill_ids,
+            organization_id=organization_id,
+        )
+        if skill_ids is not None:
+            await self.session.commit()
+            await self.session.refresh(agent)
         await self.provision_new_agent(
             agent=agent,
             board=board,
@@ -1579,7 +1625,8 @@ class AgentLifecycleService(OpenClawDBService):
             force_bootstrap=False,
         )
         self.logger.info("agent.create.success agent_id=%s board_id=%s", agent.id, board.id)
-        return self.to_agent_read(self.with_computed_status(agent))
+        enriched = await self.enrich_agent_reads([agent])
+        return enriched[0]
 
     async def get_agent(
         self,
@@ -1591,7 +1638,8 @@ class AgentLifecycleService(OpenClawDBService):
         if agent is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         await self.require_agent_access(agent=agent, ctx=ctx, write=False)
-        return self.to_agent_read(self.with_computed_status(agent))
+        enriched = await self.enrich_agent_reads([agent])
+        return enriched[0]
 
     async def update_agent(
         self,
@@ -1611,14 +1659,28 @@ class AgentLifecycleService(OpenClawDBService):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         await self.require_agent_access(agent=agent, ctx=options.context, write=True)
         updates = payload.model_dump(exclude_unset=True)
+        skill_ids = updates.pop("skill_ids", None)
         make_main = updates.pop("is_gateway_main", None)
+        merged_allowed_models = (
+            updates["allowed_models"]
+            if "allowed_models" in updates
+            else agent.allowed_models
+        )
+        merged_primary_model = (
+            updates["primary_model"] if "primary_model" in updates else agent.primary_model
+        )
+        validate_agent_model_limits(
+            allowed_models=merged_allowed_models,
+            primary_model=merged_primary_model,
+        )
         await self.validate_agent_update_inputs(
             ctx=options.context,
             updates=updates,
             make_main=make_main,
         )
-        if not updates and not options.force and make_main is None:
-            return self.to_agent_read(self.with_computed_status(agent))
+        if not updates and skill_ids is None and not options.force and make_main is None:
+            enriched = await self.enrich_agent_reads([agent])
+            return enriched[0]
         main_gateway, gateway_for_main = await self.apply_agent_update_mutations(
             agent=agent,
             updates=updates,
@@ -1629,6 +1691,12 @@ class AgentLifecycleService(OpenClawDBService):
             make_main=make_main,
             main_gateway=main_gateway,
             gateway_for_main=gateway_for_main,
+        )
+        await sync_agent_skills(
+            self.session,
+            agent_id=agent.id,
+            skill_ids=skill_ids,
+            organization_id=options.context.organization.id,
         )
         raw_token = self.mark_agent_update_pending(agent)
         self.session.add(agent)
@@ -1645,7 +1713,8 @@ class AgentLifecycleService(OpenClawDBService):
             request=provision_request,
         )
         self.logger.info("agent.update.success agent_id=%s", agent.id)
-        return self.to_agent_read(self.with_computed_status(agent))
+        enriched = await self.enrich_agent_reads([agent])
+        return enriched[0]
 
     async def heartbeat_agent(
         self,
