@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     # Webhook payload size limit in bytes (default 1 MB).
     webhook_max_payload_bytes: int = 1_048_576
 
+    # Task description attachments (stored on local disk by default).
+    task_attachment_upload_dir: Path = BACKEND_ROOT / "data" / "task_attachments"
+    task_attachment_max_bytes: int = 5_242_880
+
     # Rate limiting
     rate_limit_backend: RateLimitBackend = RateLimitBackend.MEMORY
     rate_limit_redis_url: str = ""

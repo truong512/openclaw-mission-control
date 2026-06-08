@@ -5,16 +5,19 @@ import {
   cloneElement,
   isValidElement,
   memo,
+  type ComponentPropsWithoutRef,
   type HTMLAttributes,
   type ReactElement,
   type ReactNode,
 } from "react";
 
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
 import { cn } from "@/lib/utils";
+import { AuthenticatedMarkdownImage } from "@/components/molecules/AuthenticatedMarkdownImage";
+import { AuthenticatedMarkdownLink } from "@/components/molecules/AuthenticatedMarkdownLink";
 
 type MarkdownCodeProps = HTMLAttributes<HTMLElement> & {
   node?: unknown;
@@ -189,21 +192,35 @@ const MARKDOWN_TABLE_COMPONENTS: Components = {
   ),
 };
 
+const MARKDOWN_IMAGE_COMPONENT = {
+  img: ({
+    node: _node,
+    className,
+    alt,
+    src,
+    title,
+  }: ComponentPropsWithoutRef<"img"> & ExtraProps) => (
+    <AuthenticatedMarkdownImage
+      src={typeof src === "string" ? src : undefined}
+      alt={alt}
+      title={title}
+      className={className}
+    />
+  ),
+};
+
 const MARKDOWN_COMPONENTS_BASIC: Components = {
   ...MARKDOWN_TABLE_COMPONENTS,
   ...MARKDOWN_CODE_COMPONENTS,
-  a: ({ node: _node, className, children, ...props }) => (
-    <a
-      className={cn(
-        "font-medium text-sky-700 underline decoration-sky-400 underline-offset-2 transition-colors hover:text-sky-800 hover:decoration-sky-600",
-        className,
-      )}
-      target="_blank"
-      rel="noopener noreferrer"
-      {...props}
+  ...MARKDOWN_IMAGE_COMPONENT,
+  a: ({ node: _node, className, children, href, title }) => (
+    <AuthenticatedMarkdownLink
+      href={typeof href === "string" ? href : undefined}
+      title={title}
+      className={className}
     >
       {renderMentions(children)}
-    </a>
+    </AuthenticatedMarkdownLink>
   ),
   p: ({ node: _node, className, children, ...props }) => (
     <p className={cn("mb-2 last:mb-0", className)} {...props}>
