@@ -244,6 +244,16 @@ const toLiveFeedFromComment = (comment: TaskCommentRead): LiveFeedItem => ({
   event_type: "task.comment",
 });
 
+const upsertTaskInList = (prev: Task[], incoming: Task): Task[] => {
+  const index = prev.findIndex((item) => item.id === incoming.id);
+  if (index === -1) {
+    return [incoming, ...prev];
+  }
+  const next = [...prev];
+  next[index] = { ...next[index], ...incoming };
+  return next;
+};
+
 const mergeCommentsById = (...collections: TaskComment[][]): TaskComment[] => {
   const byId = new Map<string, TaskComment>();
   for (const collection of collections) {
@@ -269,6 +279,22 @@ const mergeCommentsById = (...collections: TaskComment[][]): TaskComment[] => {
     return bTime - aTime;
   });
 };
+
+const latestChatMessageTimestampMs = (items: BoardChatMessage[]): number =>
+  items.reduce((max, item) => {
+    const ts = apiDatetimeToMs(item.created_at);
+    return ts === null ? max : Math.max(max, ts);
+  }, 0);
+
+const countUnreadChatMessages = (
+  items: BoardChatMessage[],
+  lastReadAtMs: number,
+): number =>
+  items.reduce((count, item) => {
+    const ts = apiDatetimeToMs(item.created_at);
+    if (ts === null || ts <= lastReadAtMs) return count;
+    return count + 1;
+  }, 0);
 
 const toLiveFeedFromBoardChat = (memory: BoardChatMessage): LiveFeedItem => {
   const content = (memory.content ?? "").trim();
@@ -638,7 +664,7 @@ const ChatMessageCard = memo(function ChatMessageCard({
         </span>
       </div>
       <div className="mt-2 select-text cursor-text text-sm leading-relaxed text-slate-900 break-words">
-        <Markdown content={message.content} variant="basic" />
+        <Markdown content={message.content} variant="chat" />
       </div>
     </div>
   );
@@ -727,7 +753,15 @@ const LiveFeedCard = memo(function LiveFeedCard({
       </div>
       {message ? (
         <div className="mt-3 select-text cursor-text text-sm leading-relaxed text-slate-900 break-words">
-          <Markdown content={message} variant="basic" />
+          <Markdown
+            content={message}
+            variant={
+              item.event_type === "board.chat" ||
+              item.event_type === "board.command"
+                ? "chat"
+                : "basic"
+            }
+          />
         </div>
       ) : (
         <p className="mt-3 text-sm text-slate-500">—</p>
@@ -894,6 +928,7 @@ export default function BoardDetailPage() {
   );
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<BoardChatMessage[]>([]);
+  const [chatLastReadAtMs, setChatLastReadAtMs] = useState(0);
   const [isChatSending, setIsChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const chatMessagesRef = useRef<BoardChatMessage[]>([]);
@@ -981,6 +1016,7 @@ export default function BoardDetailPage() {
     setLiveFeedHistoryError(null);
     setLiveFeed([]);
     setLiveFeedFlashIds({});
+    setChatLastReadAtMs(0);
     if (typeof window !== "undefined") {
       Object.values(liveFeedFlashTimersRef.current).forEach((timerId) => {
         window.clearTimeout(timerId);
@@ -1270,7 +1306,9 @@ export default function BoardDetailPage() {
       setTasks((snapshot.tasks ?? []).map(normalizeTask));
       setAgents((snapshot.agents ?? []).map(normalizeAgent));
       setApprovals((snapshot.approvals ?? []).map(normalizeApproval));
-      setChatMessages(snapshot.chat_messages ?? []);
+      const loadedChatMessages = snapshot.chat_messages ?? [];
+      setChatMessages(loadedChatMessages);
+      setChatLastReadAtMs(latestChatMessageTimestampMs(loadedChatMessages));
 
       try {
         const groupResult =
@@ -1342,6 +1380,22 @@ export default function BoardDetailPage() {
     isLiveFeedOpenRef.current = isLiveFeedOpen;
   }, [isLiveFeedOpen]);
 
+  const unreadChatCount = useMemo(() => {
+    if (isChatOpen) return 0;
+    return countUnreadChatMessages(chatMessages, chatLastReadAtMs);
+  }, [chatLastReadAtMs, chatMessages, isChatOpen]);
+
+  const markChatAsRead = useCallback((items: BoardChatMessage[]) => {
+    const latest = latestChatMessageTimestampMs(items);
+    if (latest <= 0) return;
+    setChatLastReadAtMs((prev) => (latest > prev ? latest : prev));
+  }, []);
+
+  useEffect(() => {
+    if (!isChatOpen) return;
+    markChatAsRead(chatMessages);
+  }, [chatMessages, isChatOpen, markChatAsRead]);
+
   useEffect(() => {
     if (!isChatOpen) return;
     const timeout = window.setTimeout(() => {
@@ -1381,7 +1435,6 @@ export default function BoardDetailPage() {
   useEffect(() => {
     if (!isPageActive) return;
     if (!isSignedIn || !boardId || !board) return;
-    if (!isChatOpen && !isLiveFeedOpen) return;
     let isCancelled = false;
     const abortController = new AbortController();
     const backoff = createExponentialBackoff(SSE_RECONNECT_BACKOFF);
@@ -1487,15 +1540,7 @@ export default function BoardDetailPage() {
         window.clearTimeout(reconnectTimeout);
       }
     };
-  }, [
-    board,
-    boardId,
-    isChatOpen,
-    isLiveFeedOpen,
-    isPageActive,
-    isSignedIn,
-    pushLiveFeed,
-  ]);
+  }, [board, boardId, isPageActive, isSignedIn, pushLiveFeed]);
 
   useEffect(() => {
     if (!isPageActive) return;
@@ -1768,41 +1813,24 @@ export default function BoardDetailPage() {
                 } else if (payload.task) {
                   const incomingTask = payload.task;
                   setTasks((prev) => {
-                    const index = prev.findIndex(
+                    const existing = prev.find(
                       (item) => item.id === incomingTask.id,
                     );
-                    if (index === -1) {
-                      const assignee = incomingTask.assigned_agent_id
-                        ? (agentsRef.current.find(
-                            (agent) =>
-                              agent.id === incomingTask.assigned_agent_id,
-                          )?.name ?? null)
-                        : null;
-                      const created = normalizeTask({
-                        ...incomingTask,
-                        assignee,
-                        approvals_count: 0,
-                        approvals_pending_count: 0,
-                      } as TaskCardRead);
-                      return [created, ...prev];
-                    }
-                    const next = [...prev];
-                    const existing = next[index];
                     const assignee = incomingTask.assigned_agent_id
                       ? (agentsRef.current.find(
                           (agent) =>
                             agent.id === incomingTask.assigned_agent_id,
                         )?.name ?? null)
                       : null;
-                    const updated = normalizeTask({
-                      ...existing,
+                    const merged = normalizeTask({
+                      ...(existing ?? incomingTask),
                       ...incomingTask,
                       assignee,
-                      approvals_count: existing.approvals_count,
-                      approvals_pending_count: existing.approvals_pending_count,
+                      approvals_count: existing?.approvals_count ?? 0,
+                      approvals_pending_count:
+                        existing?.approvals_pending_count ?? 0,
                     } as TaskCardRead);
-                    next[index] = { ...existing, ...updated };
-                    return next;
+                    return upsertTaskInList(prev, merged);
                   });
                   if (selectedTaskIdRef.current === incomingTask.id) {
                     setSelectedTask((prev) => {
@@ -2030,7 +2058,7 @@ export default function BoardDetailPage() {
         approvals_count: 0,
         approvals_pending_count: 0,
       } as TaskCardRead);
-      setTasks((prev) => [created, ...prev]);
+      setTasks((prev) => upsertTaskInList(prev, created));
       setIsDialogOpen(false);
       resetForm();
     } catch (err) {
@@ -2595,6 +2623,7 @@ export default function BoardDetailPage() {
         scroll: false,
       });
     }
+    markChatAsRead(chatMessagesRef.current);
     setIsChatOpen(true);
   };
 
@@ -3233,11 +3262,24 @@ export default function BoardDetailPage() {
                   <Button
                     variant="outline"
                     onClick={openBoardChat}
-                    className="h-9 w-9 p-0"
-                    aria-label="Board chat"
-                    title="Board chat"
+                    className="relative h-9 w-9 p-0"
+                    aria-label={
+                      unreadChatCount > 0
+                        ? `Board chat (${unreadChatCount} unread)`
+                        : "Board chat"
+                    }
+                    title={
+                      unreadChatCount > 0
+                        ? `Board chat (${unreadChatCount} unread)`
+                        : "Board chat"
+                    }
                   >
                     <MessageSquare className="h-4 w-4" />
+                    {unreadChatCount > 0 ? (
+                      <span className="absolute -right-1 -top-1 inline-flex min-w-[18px] items-center justify-center rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                        {unreadChatCount > 99 ? "99+" : unreadChatCount}
+                      </span>
+                    ) : null}
                   </Button>
                   <Button
                     variant="outline"

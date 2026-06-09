@@ -272,7 +272,7 @@ const MARKDOWN_COMPONENTS_DESCRIPTION: Components = {
 const MARKDOWN_REMARK_PLUGINS_BASIC = [remarkGfm];
 const MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [remarkGfm, remarkBreaks];
 
-export type MarkdownVariant = "basic" | "comment" | "description";
+export type MarkdownVariant = "basic" | "chat" | "comment" | "description";
 
 export const Markdown = memo(function Markdown({
   content,
@@ -283,7 +283,7 @@ export const Markdown = memo(function Markdown({
 }) {
   const trimmed = content.trim();
   const remarkPlugins =
-    variant === "comment"
+    variant === "comment" || variant === "chat"
       ? MARKDOWN_REMARK_PLUGINS_WITH_BREAKS
       : MARKDOWN_REMARK_PLUGINS_BASIC;
   const components =

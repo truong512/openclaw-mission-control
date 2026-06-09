@@ -32,6 +32,7 @@ from app.models.activity_events import ActivityEvent
 from app.models.agents import Agent
 from app.models.approval_task_links import ApprovalTaskLink
 from app.models.approvals import Approval
+from app.models.board_memory import BoardMemory
 from app.models.boards import Board
 from app.models.tag_assignments import TagAssignment
 from app.models.task_custom_fields import (
@@ -622,6 +623,62 @@ def _assignment_notification_message(*, board: Board, task: Task, agent: Agent) 
         + "\n".join(details)
         + ("\n\nTake action: open the task and begin work. " "Post updates as task comments.")
     )
+
+
+def _actor_memory_source(actor: ActorContext) -> str:
+    if actor.actor_type == "agent" and actor.agent:
+        return actor.agent.name
+    if actor.user:
+        return actor.user.preferred_name or actor.user.name or "User"
+    return "Mission Control"
+
+
+def _done_operator_chat_message(
+    *,
+    board: Board,
+    task: Task,
+    actor: ActorContext,
+) -> str:
+    description = _truncate_snippet(task.description or "")
+    details = [
+        f"Board: {board.name}",
+        f"Task: {task.title}",
+        f"Task ID: {task.id}",
+        f"Marked done by: {_actor_memory_source(actor)}",
+    ]
+    if description:
+        details.append(f"Description: {description}")
+    return "TASK COMPLETED\n" + "\n".join(details)
+
+
+async def _notify_operator_on_task_done(
+    session: AsyncSession,
+    *,
+    board: Board,
+    task: Task,
+    actor: ActorContext,
+    previous_status: str,
+) -> None:
+    if previous_status == "done" or task.status != "done":
+        return
+    memory = BoardMemory(
+        board_id=board.id,
+        content=_done_operator_chat_message(board=board, task=task, actor=actor),
+        tags=["chat", "task_done"],
+        is_chat=True,
+        source="Mission Control",
+    )
+    session.add(memory)
+    actor_agent_id = actor.agent.id if actor.actor_type == "agent" and actor.agent else None
+    record_activity(
+        session,
+        event_type="task.done_operator_notified",
+        message=f"Operator notified via board chat: {task.title}.",
+        agent_id=actor_agent_id,
+        task_id=task.id,
+        board_id=board.id,
+    )
+    await session.commit()
 
 
 def _rework_notification_message(
@@ -2393,6 +2450,15 @@ async def _apply_lead_task_update(
     )
     await session.commit()
     await session.refresh(update.task)
+    board = await Board.objects.by_id(update.board_id).first(session)
+    if board:
+        await _notify_operator_on_task_done(
+            session,
+            board=board,
+            task=update.task,
+            actor=update.actor,
+            previous_status=update.previous_status,
+        )
     await _lead_notify_new_assignee(session, update=update)
     return await _task_read_response(
         session,
@@ -2797,6 +2863,19 @@ async def _finalize_updated_task(
     await _record_task_comment_from_update(session, update=update)
     await _record_task_update_activity(session, update=update)
     await _notify_task_update_assignment_changes(session, update=update)
+    board = (
+        await Board.objects.by_id(update.board_id).first(session)
+        if update.task.board_id
+        else None
+    )
+    if board:
+        await _notify_operator_on_task_done(
+            session,
+            board=board,
+            task=update.task,
+            actor=update.actor,
+            previous_status=update.previous_status,
+        )
 
     return await _task_read_response(
         session,
